@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DIY Kinetics Spectrometer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; background: #f4f4f9; }
+        .camera-wrapper { position: relative; width: 100%; max-width: 400px; height: 300px; margin: 0 auto; background: #000; overflow: hidden; border-radius: 8px;}
+        video { width: 100%; height: 100%; object-fit: cover; } 
+        .roi-reticle { position: absolute; top: 40%; left: 10%; width: 80%; height: 20%; border: 2px solid #00ff00; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); pointer-events: none; z-index: 10; }
+        canvas { display: none; } 
+        .chart-container { width: 100%; max-width: 400px; margin: 15px auto; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: none; }
+        .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .input-group { display: none; gap: 10px; justify-content: center; width: 100%; max-width: 300px; }
+        input { width: 60px; padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; }
+        button, select { padding: 12px 20px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; width: 80%; max-width: 300px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:disabled { background: #ccc; }
+        select { background: #fff; color: #333; display: none; } 
+        
+        #btn-calibrate { background: #6f42c1; display: none; }
+        #btn-skip-calib { background: #6c757d; display: none; font-size: 14px; padding: 8px 20px;}
+        #btn-blank { display: none; }
+        #btn-run { background: #28a745; display: none; }
+        #btn-export { background: #17a2b8; display: none; }
+        #btn-reset { background: #dc3545; display: none; }
+        #status { margin-top: 10px; font-weight: bold; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h2>DIY Spectrometer</h2>
+    
+    <div class="camera-wrapper" id="camera-ui">
+        <video id="video" autoplay playsinline></video>
+        <div class="roi-reticle"></div>
+    </div>
+
+    <div id="status">Align spectrum in the green box.</div>
+
+    <div class="controls">
+        <button id="btn-start">1. Start Camera</button>
+        <select id="camera-select"></select> 
+        
+        <button id="btn-calibrate">2. Calibrate (Point at White Screen)</button>
+        <button id="btn-skip-calib">Skip Calibration (Default)</button>
+        
+        <button id="btn-blank">3. Record Blank (I₀)</button>
+        
+        <div class="input-group" id="setup-inputs">
+            <div><label>Measurements (N):</label><br><input type="number" id="num-n" value="1" min="1"></div>
+            <div><label>Interval (sec):</label><br><input type="number" id="num-int" value="5" min="2"></div>
+        </div>
+        
+        <button id="btn-run">4. Start Analysis</button>
+        <button id="btn-export">Download CSV</button>
+        <button id="btn-reset">Reset Experiment</button>
+    </div>
+
+    <div class="chart-container" id="spectrum-box"><canvas id="spectrumChart"></canvas></div>
+    <div class="chart-container" id="kinetics-box"><canvas id="kineticsChart"></canvas></div>
+
+    <canvas id="captureCanvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const captureCanvas = document.getElementById('captureCanvas');
+        const ctx = captureCanvas.getContext('2d', { willReadFrequently: true });
+        
+        let I0_data = [];
+        let kineticData = []; 
+        let lambdaMaxIndex = 0;
+        let spectrumChartInst = null;
+        let kineticsChartInst = null;
+        let currentStream = null;
+
+        // Calibration Variables
+        let isCalibrated = false;
+        let calibSlope = 0;
+        let calibIntercept = 0;
+        let totalPixels = 0;
+
+        function getWavelength(pixelIndex) {
+            if (isCalibrated) {
+                return Math.round(calibSlope * pixelIndex + calibIntercept);
+            } else {
+                return Math.round(400 + (pixelIndex / totalPixels) * 300); 
+            }
+        }
+
+        async function startCamera(deviceId = null) {
+            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+            
+            const constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' } };
+
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                if (!deviceId) {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoInputs = devices.filter(device => device.kind === 'videoinput');
+                    const select = document.getElementById('camera-select');
+                    select.innerHTML = '';
+                    
+                    videoInputs.forEach((device, index) => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `Camera ${index + 1}`;
+                        select.appendChild(option);
+                    });
+                    
+                    if (videoInputs.length > 1) {
+                        select.style.display = 'block';
+                        const currentDeviceId = currentStream.getVideoTracks()[0].getSettings().deviceId;
+                        if (currentDeviceId) select.value = currentDeviceId;
+                    }
+                }
+
+                document.getElementById('status').innerText = "Camera active. Point at a blank white monitor screen and Calibrate.";
+                document.getElementById('btn-start').style.display = 'none';
+                document.getElementById('btn-calibrate').style.display = 'block';
+                document.getElementById('btn-skip-calib').style.display = 'block';
+            } catch (err) {
+                alert("Camera access denied or unavailable.");
+            }
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => startCamera());
+        document.getElementById('camera-select').addEventListener('change', (e) => startCamera(e.target.value));
+
+        async function captureSpectrum() {
+            captureCanvas.width = video.videoWidth;
+            captureCanvas.height = video.videoHeight;
+            let startX = Math.floor(captureCanvas.width * 0.1);
+            let startY = Math.floor(captureCanvas.height * 0.4);
+            let roiWidth = Math.floor(captureCanvas.width * 0.8);
+            let roiHeight = Math.floor(captureCanvas.height * 0.2);
+            totalPixels = roiWidth; 
+
+            let intensityArray = new Array(roiWidth).fill(0);
+            let frames = 10;
+
+            for (let f = 0; f < frames; f++) {
+                ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+                let frameData = ctx.getImageData(startX, startY, roiWidth, roiHeight).data;
+                for (let x = 0; x < roiWidth; x++) {
+                    let colSum = 0;
+                    for (let y = 0; y < roiHeight; y++) {
+                        let i = (y * roiWidth + x) * 4;
+                        colSum += (0.299 * frameData[i] + 0.587 * frameData[i+1] + 0.114 * frameData[i+2]); 
+                    }
+                    intensityArray[x] += (colSum / roiHeight);
+                }
+                await new Promise(r => setTimeout(r, 50)); 
+            }
+            return intensityArray.map(val => val / frames);
+        }
+
+        // Auto-Calibrate Wavelength (OLED/LCD Screen)
+        document.getElementById('btn-calibrate').addEventListener('click', async () => {
+            document.getElementById('status').innerText = "Scanning screen peaks... hold still.";
+            let calibData = await captureSpectrum();
+            
+            // Find 450nm Blue Peak (Search first half)
+            let midPoint = Math.floor(calibData.length / 2);
+            let blueMax = -1, bluePixel = 0;
+            for(let i = 0; i < midPoint; i++) {
+                if(calibData[i] > blueMax) { blueMax = calibData[i]; bluePixel = i; }
+            }
+
+            // Find 610nm Red Peak (Search second half)
+            let redMax = -1, redPixel = midPoint;
+            for(let i = midPoint; i < calibData.length; i++) {
+                if(calibData[i] > redMax) { redMax = calibData[i]; redPixel = i; }
+            }
+
+            if (redPixel <= bluePixel || (redMax < 20 && blueMax < 20)) {
+                alert("Calibration failed. Ensure white screen is visible and bright. Defaulting to 400-700nm estimation.");
+                isCalibrated = false;
+            } else {
+                // Linear Fit using screen emission peaks
+                calibSlope = (610 - 450) / (redPixel - bluePixel);
+                calibIntercept = 450 - (calibSlope * bluePixel);
+                isCalibrated = true;
+            }
+
+            transitionToBlank(isCalibrated ? `Calibrated: ${bluePixel}px=450nm, ${redPixel}px=610nm. Turn on internal LED and Record Blank.` : "Calibration skipped. Turn on LED and Record Blank.");
+        });
+
+        document.getElementById('btn-skip-calib').addEventListener('click', () => {
+            isCalibrated = false;
+            transitionToBlank("Calibration skipped. Using 400-700nm default. Turn on LED and Record Blank.");
+        });
+
+        function transitionToBlank(statusText) {
+            document.getElementById('status').innerText = statusText;
+            document.getElementById('btn-calibrate').style.display = 'none';
+            document.getElementById('btn-skip-calib').style.display = 'none';
+            document.getElementById('btn-blank').style.display = 'block';
+        }
+
+        function calculateAbsorbance(I_data) {
+            let A_data = [];
+            for (let i = 0; i < I_data.length; i++) {
+                let I = I_data[i] < 1 ? 1 : I_data[i];
+                let I0 = I0_data[i] < 1 ? 1 : I0_data[i];
+                let A = -Math.log10(I / I0);
+                A_data.push(Math.max(0, Math.min(A, 3))); 
+            }
+            return A_data;
+        }
+
+        document.getElementById('btn-blank').addEventListener('click', async () => {
+            document.getElementById('status').innerText = "Capturing Blank... hold still.";
+            I0_data = await captureSpectrum();
+            document.getElementById('status').innerText = "Blank saved! Setup kinetic parameters.";
+            document.getElementById('btn-blank').style.display = 'none';
+            document.getElementById('camera-select').style.display = 'none'; 
+            document.getElementById('setup-inputs').style.display = 'flex';
+            document.getElementById('btn-run').style.display = 'block';
+        });
+
+        document.getElementById('btn-run').addEventListener('click', async () => {
+            const N = parseInt(document.getElementById('num-n').value);
+            const intervalSec = parseInt(document.getElementById('num-int').value);
+            
+            document.getElementById('setup-inputs').style.display = 'none';
+            document.getElementById('btn-run').style.display = 'none';
+            document.getElementById('spectrum-box').style.display = 'block';
+            
+            kineticData = [];
+            
+            for(let step = 0; step < N; step++) {
+                document.getElementById('status').innerText = `Capturing measurement ${step + 1} of ${N}...`;
+                
+                let I_data = await captureSpectrum();
+                let A_data = calculateAbsorbance(I_data);
+                
+                if (step === 0) {
+                    let maxA = -1;
+                    for(let i=0; i<A_data.length; i++) {
+                        if(A_data[i] > maxA) { maxA = A_data[i]; lambdaMaxIndex = i; }
+                    }
+                    plotSpectrum(A_data); 
+                    if (N > 1) document.getElementById('kinetics-box').style.display = 'block';
+                }
+                
+                kineticData.push({
+                    time: step * intervalSec,
+                    maxA: A_data[lambdaMaxIndex],
+                    spectrum: A_data
+                });
+
+                if (N > 1) plotKinetics();
+
+                if (step < N - 1) {
+                    document.getElementById('status').innerText = `Waiting for next capture...`;
+                    await new Promise(r => setTimeout(r, intervalSec * 1000));
+                }
+            }
+
+            document.getElementById('status').innerText = "Analysis Complete.";
+            document.getElementById('btn-export').style.display = 'block';
+            document.getElementById('btn-reset').style.display = 'block';
+        });
+
+        function plotSpectrum(data) {
+            let labels = data.map((_, i) => getWavelength(i));
+            const ctxChart = document.getElementById('spectrumChart').getContext('2d');
+            if (spectrumChartInst) spectrumChartInst.destroy();
+            spectrumChartInst = new Chart(ctxChart, {
+                type: 'line', data: { labels: labels, datasets: [{ label: 'Absorbance Spectrum (t=0)', data: data, borderColor: '#dc3545', borderWidth: 2, pointRadius: 0 }] },
+                options: { scales: { x: { title: { display: true, text: 'Wavelength (nm)' } }, y: { title: { display: true, text: 'Absorbance' } } } }
+            });
+        }
+
+        function plotKinetics() {
+            let times = kineticData.map(d => d.time);
+            let maxAbs = kineticData.map(d => d.maxA);
+            const ctxChart = document.getElementById('kineticsChart').getContext('2d');
+            if (kineticsChartInst) kineticsChartInst.destroy();
+            kineticsChartInst = new Chart(ctxChart, {
+                type: 'line', data: { labels: times, datasets: [{ label: `Absorbance vs Time at ${getWavelength(lambdaMaxIndex)}nm`, data: maxAbs, borderColor: '#007bff', borderWidth: 2, pointRadius: 3 }] },
+                options: { scales: { x: { title: { display: true, text: 'Time (s)' } }, y: { title: { display: true, text: 'Absorbance' } } } }
+            });
+        }
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            let csv = "Time(s),Absorbance_at_Lmax,";
+            let labels = kineticData[0].spectrum.map((_, i) => getWavelength(i) + "nm");
+            csv += labels.join(",") + "\n";
+
+            kineticData.forEach(row => {
+                csv += `${row.time},${row.maxA.toFixed(4)},`;
+                csv += row.spectrum.map(val => val.toFixed(4)).join(",") + "\n";
+            });
+
+            const link = document.createElement("a");
+            link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
+            link.download = "calibrated_kinetics_spectra.csv";
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            I0_data = [];
+            kineticData = [];
+            isCalibrated = false;
+            
+            if (spectrumChartInst) { spectrumChartInst.destroy(); spectrumChartInst = null; }
+            if (kineticsChartInst) { kineticsChartInst.destroy(); kineticsChartInst = null; }
+            
+            document.getElementById('spectrum-box').style.display = 'none';
+            document.getElementById('kinetics-box').style.display = 'none';
+            document.getElementById('btn-export').style.display = 'none';
+            document.getElementById('btn-reset').style.display = 'none';
+            
+            document.getElementById('camera-ui').style.display = 'block';
+            
+            document.getElementById('btn-calibrate').style.display = 'block';
+            document.getElementById('btn-skip-calib').style.display = 'block';
+            
+            if (document.getElementById('camera-select').options.length > 1) {
+                document.getElementById('camera-select').style.display = 'block';
+            }
+            
+            document.getElementById('status').innerText = "App reset. Point at a blank white monitor screen and Calibrate.";
+        });
+    </script>
+</body>
+</html>
