@@ -1,0 +1,1 @@
+This is an attempt to use mobile phone as spectrophotometer. As there is limitation in the phone hardware, only visible region is considered here. The main objective is to help many schools/ less funded colleges to train their students. 
