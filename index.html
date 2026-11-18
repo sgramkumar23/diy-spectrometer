@@ -6,328 +6,834 @@
     <title>DIY Kinetics Spectrometer</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: system-ui, sans-serif; text-align: center; margin: 0; padding: 10px; background: #f4f4f9; }
-        .camera-wrapper { position: relative; width: 100%; max-width: 400px; height: 300px; margin: 0 auto; background: #000; overflow: hidden; border-radius: 8px;}
-        video { width: 100%; height: 100%; object-fit: cover; } 
-        .roi-reticle { position: absolute; top: 40%; left: 10%; width: 80%; height: 20%; border: 2px solid #00ff00; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); pointer-events: none; z-index: 10; }
-        canvas { display: none; } 
-        .chart-container { width: 100%; max-width: 400px; margin: 15px auto; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: none; }
-        .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-        .input-group { display: none; gap: 10px; justify-content: center; width: 100%; max-width: 300px; }
-        input { width: 60px; padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; }
-        button, select { padding: 12px 20px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; width: 80%; max-width: 300px; }
-        button { background: #007bff; color: white; border: none; cursor: pointer; }
-        button:disabled { background: #ccc; }
-        select { background: #fff; color: #333; display: none; } 
+        :root {
+            --bg: #0b0f19;
+            --card: #151e30;
+            --accent: #38bdf8;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --danger: #f87171;
+            --border: #22324e;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+        }
+        body { font-family: system-ui, -apple-system, sans-serif; text-align: center; margin: 0; padding: 10px; background: var(--bg); color: var(--text); }
+        h2 { margin: 4px 0 8px; font-size: 1.15rem; }
+        .main-container { width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
         
-        #btn-calibrate { background: #6f42c1; display: none; }
-        #btn-skip-calib { background: #6c757d; display: none; font-size: 14px; padding: 8px 20px;}
-        #btn-blank { display: none; }
-        #btn-run { background: #28a745; display: none; }
-        #btn-export { background: #17a2b8; display: none; }
-        #btn-reset { background: #dc3545; display: none; }
-        #status { margin-top: 10px; font-weight: bold; color: #333; }
+        .camera-wrapper { position: relative; width: 100%; height: 230px; background: #000; overflow: hidden; border-radius: 8px; border: 1px solid var(--border); }
+        video, #uploaded-img { width: 100%; height: 100%; object-fit: cover; }
+        .roi-reticle { position: absolute; top: 40%; left: 5%; width: 90%; height: 20%; border: 2px dashed #00ffaa; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); pointer-events: none; z-index: 10; }
+        
+        .card { background: var(--card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); text-align: left; }
+        .card-header { font-size: 0.82rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+        
+        .btn-row { display: flex; gap: 6px; width: 100%; margin-top: 6px; }
+        button, label.btn-lbl, select { padding: 9px 10px; font-size: 13px; font-weight: 600; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: var(--text); cursor: pointer; flex: 1; text-align: center; }
+        button.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+        button.success { background: var(--accent-green); color: #000; border-color: var(--accent-green); }
+        button.danger { background: rgba(248, 113, 113, 0.15); color: var(--danger); border-color: var(--danger); }
+        button:disabled { background: #1e293b; color: #475569; border-color: #334155; cursor: not-allowed; }
+        
+        .mode-tabs { display: flex; gap: 4px; background: #0b0f19; padding: 4px; border-radius: 6px; border: 1px solid var(--border); margin: 8px 0; }
+        .mode-tab { flex: 1; padding: 7px 6px; font-size: 12px; font-weight: 700; border: none; border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; }
+        .mode-tab.active { background: var(--accent); color: #000; }
+
+        .badge { display: inline-block; padding: 2px 8px; font-size: 0.72rem; border-radius: 4px; font-weight: 600; }
+        .badge-default { background: #334155; color: #cbd5e1; }
+        .badge-ready { background: #065f46; color: #6ee7b7; }
+        
+        .counter-box { background: #0f172a; padding: 10px; border-radius: 6px; border: 1px solid var(--border); text-align: center; margin-top: 8px; }
+        .counter-badge { font-size: 1.3rem; font-weight: 800; color: var(--accent); font-family: monospace; }
+        .progress-bar { width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+        .progress-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.3s; }
+        
+        .input-pair { flex: 1; }
+        .input-pair label { font-size: 0.72rem; color: var(--text-dim); display: block; margin-bottom: 2px; }
+        .input-pair input { width: 100%; box-sizing: border-box; padding: 7px; background: #0b0f19; color: #fff; border: 1px solid var(--border); border-radius: 4px; text-align: center; font-size: 14px; }
+
+        .slider-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
+        input[type=range] { width: 100%; accent-color: var(--accent); }
+        .preset-row { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-dim); margin-top: 4px; }
+        .preset-row span { cursor: pointer; padding: 2px 6px; border-radius: 4px; background: #0f172a; border: 1px solid var(--border); }
+        
+        canvas#stackCanvas { width: 100%; height: 270px; background: #080d18; border-radius: 6px; display: block; }
+        #status { font-size: 0.8rem; color: var(--accent-amber); text-align: center; min-height: 18px; }
     </style>
 </head>
 <body>
 
-    <h2>DIY Spectrometer</h2>
-    
-    <div class="camera-wrapper" id="camera-ui">
-        <video id="video" autoplay playsinline></video>
+<div class="main-container">
+    <h2>DIY Kinetics Spectrometer</h2>
+
+    <!-- Camera / Snapshot Viewport -->
+    <div class="camera-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <img id="uploaded-img" style="display:none;" />
         <div class="roi-reticle"></div>
     </div>
+    <div id="status">Initializing camera...</div>
 
-    <div id="status">Align spectrum in the green box.</div>
+    <div class="btn-row">
+        <button id="btn-start" class="primary">Start Camera</button>
+        <label class="btn-lbl">Upload Photo<input type="file" id="file-input" accept="image/*" style="display:none;"></label>
+        <button id="btn-dark">Dark Ref</button>
+    </div>
+    <select id="camera-select" style="display:none; width:100%;"></select>
 
-    <div class="controls">
-        <button id="btn-start">1. Start Camera</button>
-        <select id="camera-select"></select> 
-        
-        <button id="btn-calibrate">2. Calibrate (Point at White Screen)</button>
-        <button id="btn-skip-calib">Skip Calibration (Default)</button>
-        
-        <button id="btn-blank">3. Record Blank (I₀)</button>
-        
-        <div class="input-group" id="setup-inputs">
-            <div><label>Measurements (N):</label><br><input type="number" id="num-n" value="1" min="1"></div>
-            <div><label>Interval (sec):</label><br><input type="number" id="num-int" value="5" min="2"></div>
+    <!-- OPTIONAL: WAVELENGTH CALIBRATION (FOR VISIBLE SPECTRUM AXIS ONLY) -->
+    <div class="card">
+        <div class="card-header">
+            <span>1. Wavelength Axis (Optional)</span>
+            <span id="calib-badge" class="badge badge-default">Default 400–700 nm</span>
         </div>
-        
-        <button id="btn-run">4. Start Analysis</button>
-        <button id="btn-export">Download CSV</button>
-        <button id="btn-reset">Reset Experiment</button>
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">
+            Only needed to align nanometer labels on the visible spectrum using a white screen.
+        </div>
+        <div class="btn-row">
+            <button id="btn-calib-wave">Calibrate &lambda; (White Screen)</button>
+            <button id="btn-clear-calib" style="flex:0.45;">Reset &lambda;</button>
+        </div>
     </div>
 
-    <div class="chart-container" id="spectrum-box"><canvas id="spectrumChart"></canvas></div>
-    <div class="chart-container" id="kinetics-box"><canvas id="kineticsChart"></canvas></div>
+    <!-- STEP 2: KINETICS EXPERIMENT -->
+    <div class="card">
+        <div class="card-header">
+            <span>2. Kinetics Experiment</span>
+            <span id="blank-badge" class="badge badge-default">Needs Blank (I₀)</span>
+        </div>
 
-    <canvas id="captureCanvas"></canvas>
+        <div class="btn-row">
+            <button id="btn-blank" class="primary">1. Record Blank (I₀)</button>
+        </div>
 
-    <script>
-        const video = document.getElementById('video');
-        const captureCanvas = document.getElementById('captureCanvas');
-        const ctx = captureCanvas.getContext('2d', { willReadFrequently: true });
-        
-        let I0_data = [];
-        let kineticData = []; 
-        let lambdaMaxIndex = 0;
-        let spectrumChartInst = null;
-        let kineticsChartInst = null;
-        let currentStream = null;
+        <!-- Mode Switcher: Frozen Aliquots (Sample #) vs In-Situ Flask (Regular Intervals) -->
+        <div class="mode-tabs">
+            <button class="mode-tab active" id="tab-aliquot">Aliquot Mode (Sample #)</button>
+            <button class="mode-tab" id="tab-flask">Flask Mode (Time Intervals)</button>
+        </div>
 
-        // Calibration Variables
-        let isCalibrated = false;
-        let calibSlope = 0;
-        let calibIntercept = 0;
-        let totalPixels = 0;
+        <!-- PANEL A: ALIQUOT / SAMPLE NUMBER MODE -->
+        <div id="panel-aliquot">
+            <div class="btn-row">
+                <div class="input-pair">
+                    <label>Next Sample #:</label>
+                    <input type="number" id="next-sample-num" value="1" min="1">
+                </div>
+                <div class="input-pair">
+                    <label>Planned Samples (N):</label>
+                    <input type="number" id="aliquot-total-n" value="8" min="1">
+                </div>
+            </div>
+            <div class="btn-row">
+                <button id="btn-capture-sample" class="success" disabled>2. Capture Sample #1</button>
+            </div>
+        </div>
 
-        function getWavelength(pixelIndex) {
-            if (isCalibrated) {
-                return Math.round(calibSlope * pixelIndex + calibIntercept);
-            } else {
-                return Math.round(400 + (pixelIndex / totalPixels) * 300); 
-            }
+        <!-- PANEL B: IN-SITU FLASK / REGULAR INTERVAL MODE -->
+        <div id="panel-flask" style="display:none;">
+            <div class="btn-row">
+                <div class="input-pair">
+                    <label>Data Points (N):</label>
+                    <input type="number" id="num-n" value="6" min="1">
+                </div>
+                <div class="input-pair">
+                    <label>Interval (sec):</label>
+                    <input type="number" id="num-int" value="10" min="1">
+                </div>
+            </div>
+            <div class="btn-row">
+                <button id="btn-run-auto" class="success" disabled>2. Start Timed Sequence</button>
+            </div>
+        </div>
+
+        <!-- Live Shot Counter & Progress Display -->
+        <div class="counter-box">
+            <div style="font-size:0.7rem; color:var(--text-dim); letter-spacing:0.05em;">ACQUISITION COUNTER</div>
+            <div class="counter-badge" id="counter-display">Sample 0 / 8</div>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            <div id="countdown-text" style="font-size:0.75rem; color:var(--accent); margin-top:4px; font-weight:600;">Record Blank (I₀) to unlock capture</div>
+        </div>
+    </div>
+
+    <!-- STEP 3: WAVELENGTH SELECTION & PLOTS -->
+    <div class="card">
+        <div class="card-header">3. Kinetics Wavelength Selector</div>
+        <div class="slider-header">
+            <span>Selected Wavelength (&lambda;<sub>user</sub>):</span>
+            <strong id="lambdaVal" style="color:var(--accent);">435 nm</strong>
+        </div>
+        <input type="range" id="lambdaSlider" min="400" max="700" step="1" value="435">
+        <div class="preset-row">
+            <span onclick="setWavelength(435)">435 nm (1° Amine)</span>
+            <span onclick="setWavelength(490)">490 nm (3° Amine)</span>
+            <span onclick="setWavelength(620)">620 nm (2° Amine)</span>
+        </div>
+    </div>
+
+    <!-- Waterfall Stack Plot -->
+    <div class="card">
+        <div class="card-header">
+            <span>Visible Spectrum Stack (Left: First &rarr; Right: Last)</span>
+            <button id="btn-save-plot" style="padding:3px 8px; font-size:0.72rem; flex:none;">Save PNG</button>
+        </div>
+        <canvas id="stackCanvas" width="600" height="320"></canvas>
+    </div>
+
+    <!-- Kinetics Variation Chart -->
+    <div class="card">
+        <div class="card-header">
+            <span id="kinetics-title">Kinetics Variation @ 435 nm</span>
+            <div style="display:flex; gap:4px;">
+                <button id="btn-toggle-xaxis" style="padding:3px 7px; font-size:0.72rem; flex:none;">X: Sample #</button>
+                <button id="btn-export-csv" style="padding:3px 8px; font-size:0.72rem; flex:none;">Export CSV</button>
+            </div>
+        </div>
+        <div style="height:210px;"><canvas id="kineticsChart"></canvas></div>
+    </div>
+
+    <div class="btn-row">
+        <button id="btn-reset" class="danger">Reset Experiment Data</button>
+    </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const uploadedImg = document.getElementById('uploaded-img');
+    const captureCanvas = document.getElementById('captureCanvas');
+    const ctx = captureCanvas.getContext('2d', { willReadFrequently: true });
+    const stackCanvas = document.getElementById('stackCanvas');
+    const statusText = document.getElementById('status');
+
+    const calibBadge = document.getElementById('calib-badge');
+    const blankBadge = document.getElementById('blank-badge');
+    const counterDisplay = document.getElementById('counter-display');
+    const progressFill = document.getElementById('progress-fill');
+    const countdownText = document.getElementById('countdown-text');
+    const lambdaSlider = document.getElementById('lambdaSlider');
+    const lambdaVal = document.getElementById('lambdaVal');
+
+    const tabAliquot = document.getElementById('tab-aliquot');
+    const tabFlask = document.getElementById('tab-flask');
+    const panelAliquot = document.getElementById('panel-aliquot');
+    const panelFlask = document.getElementById('panel-flask');
+
+    const nextSampleInput = document.getElementById('next-sample-num');
+    const aliquotTotalInput = document.getElementById('aliquot-total-n');
+    const btnCaptureSample = document.getElementById('btn-capture-sample');
+    const btnBlank = document.getElementById('btn-blank');
+    const btnRunAuto = document.getElementById('btn-run-auto');
+    const btnToggleXAxis = document.getElementById('btn-toggle-xaxis');
+
+    const GAMMA = 2.2;
+    const SPECTRUM_BINS = 301; // 400nm to 700nm (1nm step)
+
+    let currentStream = null;
+    let acqMode = 'aliquot'; // 'aliquot' (Sample #) or 'flask' (Time Intervals)
+    let xAxisMode = 'sample'; // 'sample' or 'time'
+
+    // Wavelength calibration parameters
+    let isWaveCalibrated = false;
+    let waveSlope = 300;
+    let waveIntercept = 400;
+
+    // Optical buffers
+    let Idark_raw = null;
+    let I0_raw = null;
+
+    // Kinetics series: array of { sampleNum, time, spectrum301, lambdaMax, aMax }
+    let kineticSeries = [];
+    let kineticsChartInst = null;
+
+    window.addEventListener('load', () => {
+        restoreWavelengthCalib();
+        updateCounterIdle();
+        renderWaterfallStack();
+        initCamera();
+    });
+
+    // -------------------------------------------------------------
+    // MODE SWITCHING (ALIQUOT SAMPLE # VS FLASK TIME INTERVALS)
+    // -------------------------------------------------------------
+    tabAliquot.addEventListener('click', () => {
+        acqMode = 'aliquot';
+        xAxisMode = 'sample';
+        tabAliquot.classList.add('active');
+        tabFlask.classList.remove('active');
+        panelAliquot.style.display = 'block';
+        panelFlask.style.display = 'none';
+        btnToggleXAxis.innerText = 'X: Sample #';
+        updateCounterIdle();
+        renderWaterfallStack();
+        updateKineticsChart();
+    });
+
+    tabFlask.addEventListener('click', () => {
+        acqMode = 'flask';
+        xAxisMode = 'time';
+        tabFlask.classList.add('active');
+        tabAliquot.classList.remove('active');
+        panelFlask.style.display = 'block';
+        panelAliquot.style.display = 'none';
+        btnToggleXAxis.innerText = 'X: Time (s)';
+        updateCounterIdle();
+        renderWaterfallStack();
+        updateKineticsChart();
+    });
+
+    btnToggleXAxis.addEventListener('click', () => {
+        xAxisMode = (xAxisMode === 'sample') ? 'time' : 'sample';
+        btnToggleXAxis.innerText = (xAxisMode === 'sample') ? 'X: Sample #' : 'X: Time (s)';
+        renderWaterfallStack();
+        updateKineticsChart();
+    });
+
+    nextSampleInput.addEventListener('input', () => {
+        const num = parseInt(nextSampleInput.value) || 1;
+        btnCaptureSample.innerText = `2. Capture Sample #${num}`;
+    });
+
+    aliquotTotalInput.addEventListener('input', updateCounterIdle);
+    document.getElementById('num-n').addEventListener('input', updateCounterIdle);
+
+    function updateCounterIdle() {
+        if (kineticSeries.length > 0) return;
+        if (acqMode === 'aliquot') {
+            const tot = parseInt(aliquotTotalInput.value) || 0;
+            counterDisplay.innerText = `Sample 0 / ${tot}`;
+        } else {
+            const tot = parseInt(document.getElementById('num-n').value) || 0;
+            counterDisplay.innerText = `Shot 0 / ${tot}`;
         }
+    }
 
-        async function startCamera(deviceId = null) {
-            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
-            
-            const constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' } };
-
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = currentStream;
-                
-                if (!deviceId) {
-                    const devices = await navigator.mediaDevices.enumerateDevices();
-                    const videoInputs = devices.filter(device => device.kind === 'videoinput');
-                    const select = document.getElementById('camera-select');
-                    select.innerHTML = '';
-                    
-                    videoInputs.forEach((device, index) => {
-                        const option = document.createElement('option');
-                        option.value = device.deviceId;
-                        option.text = device.label || `Camera ${index + 1}`;
-                        select.appendChild(option);
-                    });
-                    
-                    if (videoInputs.length > 1) {
-                        select.style.display = 'block';
-                        const currentDeviceId = currentStream.getVideoTracks()[0].getSettings().deviceId;
-                        if (currentDeviceId) select.value = currentDeviceId;
-                    }
-                }
-
-                document.getElementById('status').innerText = "Camera active. Point at a blank white monitor screen and Calibrate.";
-                document.getElementById('btn-start').style.display = 'none';
-                document.getElementById('btn-calibrate').style.display = 'block';
-                document.getElementById('btn-skip-calib').style.display = 'block';
-            } catch (err) {
-                alert("Camera access denied or unavailable.");
-            }
+    // -------------------------------------------------------------
+    // CAMERA & PHOTO SETUP
+    // -------------------------------------------------------------
+    async function initCamera(deviceId = null) {
+        if (currentStream) {
+            currentStream.getTracks().forEach(t => t.stop());
         }
+        const constraints = {
+            video: deviceId
+                ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        };
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = currentStream;
+            video.style.display = 'block';
+            uploadedImg.style.display = 'none';
 
-        document.getElementById('btn-start').addEventListener('click', () => startCamera());
-        document.getElementById('camera-select').addEventListener('change', (e) => startCamera(e.target.value));
-
-        async function captureSpectrum() {
-            captureCanvas.width = video.videoWidth;
-            captureCanvas.height = video.videoHeight;
-            let startX = Math.floor(captureCanvas.width * 0.1);
-            let startY = Math.floor(captureCanvas.height * 0.4);
-            let roiWidth = Math.floor(captureCanvas.width * 0.8);
-            let roiHeight = Math.floor(captureCanvas.height * 0.2);
-            totalPixels = roiWidth; 
-
-            let intensityArray = new Array(roiWidth).fill(0);
-            let frames = 10;
-
-            for (let f = 0; f < frames; f++) {
-                ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
-                let frameData = ctx.getImageData(startX, startY, roiWidth, roiHeight).data;
-                for (let x = 0; x < roiWidth; x++) {
-                    let colSum = 0;
-                    for (let y = 0; y < roiHeight; y++) {
-                        let i = (y * roiWidth + x) * 4;
-                        colSum += (0.299 * frameData[i] + 0.587 * frameData[i+1] + 0.114 * frameData[i+2]); 
-                    }
-                    intensityArray[x] += (colSum / roiHeight);
-                }
-                await new Promise(r => setTimeout(r, 50)); 
-            }
-            return intensityArray.map(val => val / frames);
-        }
-
-        // Auto-Calibrate Wavelength (OLED/LCD Screen)
-        document.getElementById('btn-calibrate').addEventListener('click', async () => {
-            document.getElementById('status').innerText = "Scanning screen peaks... hold still.";
-            let calibData = await captureSpectrum();
-            
-            // Find 450nm Blue Peak (Search first half)
-            let midPoint = Math.floor(calibData.length / 2);
-            let blueMax = -1, bluePixel = 0;
-            for(let i = 0; i < midPoint; i++) {
-                if(calibData[i] > blueMax) { blueMax = calibData[i]; bluePixel = i; }
-            }
-
-            // Find 610nm Red Peak (Search second half)
-            let redMax = -1, redPixel = midPoint;
-            for(let i = midPoint; i < calibData.length; i++) {
-                if(calibData[i] > redMax) { redMax = calibData[i]; redPixel = i; }
-            }
-
-            if (redPixel <= bluePixel || (redMax < 20 && blueMax < 20)) {
-                alert("Calibration failed. Ensure white screen is visible and bright. Defaulting to 400-700nm estimation.");
-                isCalibrated = false;
-            } else {
-                // Linear Fit using screen emission peaks
-                calibSlope = (610 - 450) / (redPixel - bluePixel);
-                calibIntercept = 450 - (calibSlope * bluePixel);
-                isCalibrated = true;
-            }
-
-            transitionToBlank(isCalibrated ? `Calibrated: ${bluePixel}px=450nm, ${redPixel}px=610nm. Turn on internal LED and Record Blank.` : "Calibration skipped. Turn on LED and Record Blank.");
-        });
-
-        document.getElementById('btn-skip-calib').addEventListener('click', () => {
-            isCalibrated = false;
-            transitionToBlank("Calibration skipped. Using 400-700nm default. Turn on LED and Record Blank.");
-        });
-
-        function transitionToBlank(statusText) {
-            document.getElementById('status').innerText = statusText;
-            document.getElementById('btn-calibrate').style.display = 'none';
-            document.getElementById('btn-skip-calib').style.display = 'none';
-            document.getElementById('btn-blank').style.display = 'block';
-        }
-
-        function calculateAbsorbance(I_data) {
-            let A_data = [];
-            for (let i = 0; i < I_data.length; i++) {
-                let I = I_data[i] < 1 ? 1 : I_data[i];
-                let I0 = I0_data[i] < 1 ? 1 : I0_data[i];
-                let A = -Math.log10(I / I0);
-                A_data.push(Math.max(0, Math.min(A, 3))); 
-            }
-            return A_data;
-        }
-
-        document.getElementById('btn-blank').addEventListener('click', async () => {
-            document.getElementById('status').innerText = "Capturing Blank... hold still.";
-            I0_data = await captureSpectrum();
-            document.getElementById('status').innerText = "Blank saved! Setup kinetic parameters.";
-            document.getElementById('btn-blank').style.display = 'none';
-            document.getElementById('camera-select').style.display = 'none'; 
-            document.getElementById('setup-inputs').style.display = 'flex';
-            document.getElementById('btn-run').style.display = 'block';
-        });
-
-        document.getElementById('btn-run').addEventListener('click', async () => {
-            const N = parseInt(document.getElementById('num-n').value);
-            const intervalSec = parseInt(document.getElementById('num-int').value);
-            
-            document.getElementById('setup-inputs').style.display = 'none';
-            document.getElementById('btn-run').style.display = 'none';
-            document.getElementById('spectrum-box').style.display = 'block';
-            
-            kineticData = [];
-            
-            for(let step = 0; step < N; step++) {
-                document.getElementById('status').innerText = `Capturing measurement ${step + 1} of ${N}...`;
-                
-                let I_data = await captureSpectrum();
-                let A_data = calculateAbsorbance(I_data);
-                
-                if (step === 0) {
-                    let maxA = -1;
-                    for(let i=0; i<A_data.length; i++) {
-                        if(A_data[i] > maxA) { maxA = A_data[i]; lambdaMaxIndex = i; }
-                    }
-                    plotSpectrum(A_data); 
-                    if (N > 1) document.getElementById('kinetics-box').style.display = 'block';
-                }
-                
-                kineticData.push({
-                    time: step * intervalSec,
-                    maxA: A_data[lambdaMaxIndex],
-                    spectrum: A_data
+            if (!deviceId) {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoInputs = devices.filter(d => d.kind === 'videoinput');
+                const select = document.getElementById('camera-select');
+                select.innerHTML = '';
+                videoInputs.forEach((d, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = d.deviceId;
+                    opt.text = d.label || `Camera ${idx + 1}`;
+                    select.appendChild(opt);
                 });
-
-                if (N > 1) plotKinetics();
-
-                if (step < N - 1) {
-                    document.getElementById('status').innerText = `Waiting for next capture...`;
-                    await new Promise(r => setTimeout(r, intervalSec * 1000));
+                if (videoInputs.length > 1) {
+                    select.style.display = 'block';
+                    const activeId = currentStream.getVideoTracks()[0].getSettings().deviceId;
+                    if (activeId) select.value = activeId;
                 }
             }
-
-            document.getElementById('status').innerText = "Analysis Complete.";
-            document.getElementById('btn-export').style.display = 'block';
-            document.getElementById('btn-reset').style.display = 'block';
-        });
-
-        function plotSpectrum(data) {
-            let labels = data.map((_, i) => getWavelength(i));
-            const ctxChart = document.getElementById('spectrumChart').getContext('2d');
-            if (spectrumChartInst) spectrumChartInst.destroy();
-            spectrumChartInst = new Chart(ctxChart, {
-                type: 'line', data: { labels: labels, datasets: [{ label: 'Absorbance Spectrum (t=0)', data: data, borderColor: '#dc3545', borderWidth: 2, pointRadius: 0 }] },
-                options: { scales: { x: { title: { display: true, text: 'Wavelength (nm)' } }, y: { title: { display: true, text: 'Absorbance' } } } }
-            });
+            statusText.innerText = "Camera active. Record Blank (I₀) to begin.";
+        } catch (err) {
+            statusText.innerText = "Camera unavailable. Use 'Upload Photo' or allow camera access.";
         }
+    }
+    document.getElementById('btn-start').addEventListener('click', () => initCamera());
+    document.getElementById('camera-select').addEventListener('change', (e) => initCamera(e.target.value));
 
-        function plotKinetics() {
-            let times = kineticData.map(d => d.time);
-            let maxAbs = kineticData.map(d => d.maxA);
-            const ctxChart = document.getElementById('kineticsChart').getContext('2d');
-            if (kineticsChartInst) kineticsChartInst.destroy();
-            kineticsChartInst = new Chart(ctxChart, {
-                type: 'line', data: { labels: times, datasets: [{ label: `Absorbance vs Time at ${getWavelength(lambdaMaxIndex)}nm`, data: maxAbs, borderColor: '#007bff', borderWidth: 2, pointRadius: 3 }] },
-                options: { scales: { x: { title: { display: true, text: 'Time (s)' } }, y: { title: { display: true, text: 'Absorbance' } } } }
-            });
-        }
+    document.getElementById('file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            uploadedImg.onload = () => {
+                video.style.display = 'none';
+                uploadedImg.style.display = 'block';
+                statusText.innerText = "Snapshot loaded. Align reticle and record Blank (I₀).";
+            };
+            uploadedImg.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
 
-        document.getElementById('btn-export').addEventListener('click', () => {
-            let csv = "Time(s),Absorbance_at_Lmax,";
-            let labels = kineticData[0].spectrum.map((_, i) => getWavelength(i) + "nm");
-            csv += labels.join(",") + "\n";
+    // -------------------------------------------------------------
+    // OPTICAL EXTRACTION & WAVELENGTH MAPPING
+    // -------------------------------------------------------------
+    function captureRawProfile() {
+        const isImg = (uploadedImg.style.display === 'block');
+        const src = isImg ? uploadedImg : video;
+        const sw = isImg ? uploadedImg.naturalWidth : video.videoWidth;
+        const sh = isImg ? uploadedImg.naturalHeight : video.videoHeight;
 
-            kineticData.forEach(row => {
-                csv += `${row.time},${row.maxA.toFixed(4)},`;
-                csv += row.spectrum.map(val => val.toFixed(4)).join(",") + "\n";
-            });
+        if (!sw || !sh) return null;
 
-            const link = document.createElement("a");
-            link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
-            link.download = "calibrated_kinetics_spectra.csv";
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        });
+        captureCanvas.width = sw;
+        captureCanvas.height = sh;
 
-        document.getElementById('btn-reset').addEventListener('click', () => {
-            I0_data = [];
-            kineticData = [];
-            isCalibrated = false;
-            
-            if (spectrumChartInst) { spectrumChartInst.destroy(); spectrumChartInst = null; }
-            if (kineticsChartInst) { kineticsChartInst.destroy(); kineticsChartInst = null; }
-            
-            document.getElementById('spectrum-box').style.display = 'none';
-            document.getElementById('kinetics-box').style.display = 'none';
-            document.getElementById('btn-export').style.display = 'none';
-            document.getElementById('btn-reset').style.display = 'none';
-            
-            document.getElementById('camera-ui').style.display = 'block';
-            
-            document.getElementById('btn-calibrate').style.display = 'block';
-            document.getElementById('btn-skip-calib').style.display = 'block';
-            
-            if (document.getElementById('camera-select').options.length > 1) {
-                document.getElementById('camera-select').style.display = 'block';
+        const startX = Math.floor(sw * 0.05);
+        const startY = Math.floor(sh * 0.40);
+        const roiW = Math.floor(sw * 0.90);
+        const roiH = Math.floor(sh * 0.20);
+
+        ctx.drawImage(src, 0, 0, sw, sh);
+        const frameData = ctx.getImageData(startX, startY, roiW, roiH).data;
+        const rawLin = new Float32Array(roiW);
+
+        for (let x = 0; x < roiW; x++) {
+            let colSum = 0;
+            for (let y = 0; y < roiH; y++) {
+                const idx = (y * roiW + x) * 4;
+                const rLin = Math.pow(frameData[idx] / 255, GAMMA);
+                const gLin = Math.pow(frameData[idx + 1] / 255, GAMMA);
+                const bLin = Math.pow(frameData[idx + 2] / 255, GAMMA);
+                colSum += (0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin);
             }
-            
-            document.getElementById('status').innerText = "App reset. Point at a blank white monitor screen and Calibrate.";
+            rawLin[x] = colSum / roiH;
+        }
+        return rawLin;
+    }
+
+    function mapToWavelengthGrid(rawProfile) {
+        const len = rawProfile.length;
+        const grid = new Float32Array(SPECTRUM_BINS);
+
+        for (let nm = 400; nm <= 700; nm++) {
+            const u = (nm - waveIntercept) / waveSlope;
+            const clampedU = Math.max(0, Math.min(1, u));
+            const exactIdx = clampedU * (len - 1);
+            const i0 = Math.floor(exactIdx);
+            const i1 = Math.min(len - 1, i0 + 1);
+            const frac = exactIdx - i0;
+            grid[nm - 400] = rawProfile[i0] * (1 - frac) + rawProfile[i1] * frac;
+        }
+        return grid;
+    }
+
+    // Optional Wavelength Calibration
+    document.getElementById('btn-calib-wave').addEventListener('click', () => {
+        const profile = captureRawProfile();
+        if (!profile) { alert("Camera or image not ready."); return; }
+
+        const mid = Math.floor(profile.length / 2);
+        let bMax = -1, bIdx = 0;
+        for (let i = 0; i < mid; i++) {
+            if (profile[i] > bMax) { bMax = profile[i]; bIdx = i; }
+        }
+        let rMax = -1, rIdx = mid;
+        for (let i = mid; i < profile.length; i++) {
+            if (profile[i] > rMax) { rMax = profile[i]; rIdx = i; }
+        }
+
+        const uBlue = bIdx / (profile.length - 1);
+        const uRed = rIdx / (profile.length - 1);
+
+        if (uRed <= uBlue + 0.05) {
+            alert("Could not separate Blue (450nm) and Red (610nm) peaks. Ensure white screen spectrum is visible.");
+            return;
+        }
+
+        waveSlope = (610 - 450) / (uRed - uBlue);
+        waveIntercept = 450 - waveSlope * uBlue;
+        isWaveCalibrated = true;
+
+        localStorage.setItem("diy_spec_wave_calib", JSON.stringify({ waveSlope, waveIntercept }));
+        calibBadge.className = "badge badge-ready";
+        calibBadge.innerText = "Calibrated ✓";
+        statusText.innerText = `Wavelength calibrated (Blue @ ${Math.round(uBlue*100)}%, Red @ ${Math.round(uRed*100)}%).`;
+    });
+
+    document.getElementById('btn-clear-calib').addEventListener('click', () => {
+        localStorage.removeItem("diy_spec_wave_calib");
+        waveSlope = 300;
+        waveIntercept = 400;
+        isWaveCalibrated = false;
+        calibBadge.className = "badge badge-default";
+        calibBadge.innerText = "Default 400–700 nm";
+        statusText.innerText = "Reset to default 400–700 nm wavelength scale.";
+    });
+
+    function restoreWavelengthCalib() {
+        const saved = localStorage.getItem("diy_spec_wave_calib");
+        if (saved) {
+            try {
+                const obj = JSON.parse(saved);
+                waveSlope = obj.waveSlope;
+                waveIntercept = obj.waveIntercept;
+                isWaveCalibrated = true;
+                calibBadge.className = "badge badge-ready";
+                calibBadge.innerText = "Restored ✓";
+            } catch (e) {}
+        }
+    }
+
+    // Dark & Blank Capture
+    document.getElementById('btn-dark').addEventListener('click', () => {
+        const raw = captureRawProfile();
+        if (!raw) return;
+        Idark_raw = mapToWavelengthGrid(raw);
+        statusText.innerText = "Dark reference recorded.";
+    });
+
+    btnBlank.addEventListener('click', () => {
+        const raw = captureRawProfile();
+        if (!raw) { alert("Camera or image not ready."); return; }
+        I0_raw = mapToWavelengthGrid(raw);
+
+        blankBadge.className = "badge badge-ready";
+        blankBadge.innerText = "Blank Saved ✓";
+        btnBlank.innerText = "Re-record Blank (I₀)";
+        btnRunAuto.disabled = false;
+        btnCaptureSample.disabled = false;
+        countdownText.innerText = "Ready to capture samples";
+        statusText.innerText = "Blank (I₀) saved. Capture aliquots by Sample # or run timed flask sequence.";
+    });
+
+    function computeAbsorbanceSpectrum(I_grid) {
+        const A = new Float32Array(SPECTRUM_BINS);
+        for (let i = 0; i < SPECTRUM_BINS; i++) {
+            const dark = Idark_raw ? Idark_raw[i] : 0;
+            const I_net = Math.max(1e-5, I_grid[i] - dark);
+            const I0_net = Math.max(1e-4, I0_raw[i] - dark);
+            const absVal = -Math.log10(Math.min(1.0, I_net / I0_net));
+            A[i] = Math.max(0, Math.min(absVal, 3.0));
+        }
+        return A;
+    }
+
+    // -------------------------------------------------------------
+    // MODE A: ALIQUOT SAMPLE NUMBER CAPTURE (ONE-TAP SEQUENTIAL)
+    // -------------------------------------------------------------
+    btnCaptureSample.addEventListener('click', () => {
+        const raw = captureRawProfile();
+        if (!raw) return;
+
+        const sampleNum = parseInt(nextSampleInput.value) || (kineticSeries.length + 1);
+        const totalPlanned = parseInt(aliquotTotalInput.value) || 0;
+        const elapsedSec = kineticSeries.length * 60; // Nominal timestamp placeholder
+
+        recordDataPoint(sampleNum, elapsedSec, mapToWavelengthGrid(raw));
+
+        // Auto-increment Sample # for next well
+        const nextNum = sampleNum + 1;
+        nextSampleInput.value = nextNum;
+        btnCaptureSample.innerText = `2. Capture Sample #${nextNum}`;
+
+        const countNow = kineticSeries.length;
+        counterDisplay.innerText = totalPlanned > 0 ? `Sample ${countNow} / ${totalPlanned}` : `Sample #${sampleNum} Saved`;
+        if (totalPlanned > 0) {
+            progressFill.style.width = `${Math.min(100, (countNow / totalPlanned) * 100)}%`;
+        }
+        countdownText.innerText = `Saved Sample #${sampleNum} • Ready for Sample #${nextNum}`;
+        statusText.innerText = `Recorded Sample #${sampleNum}. Aim at next well and tap Capture.`;
+    });
+
+    // -------------------------------------------------------------
+    // MODE B: IN-SITU FLASK TIMED SEQUENCE
+    // -------------------------------------------------------------
+    btnRunAuto.addEventListener('click', async () => {
+        const N = parseInt(document.getElementById('num-n').value);
+        const intervalSec = parseInt(document.getElementById('num-int').value);
+        if (isNaN(N) || N < 1) return;
+
+        btnRunAuto.disabled = true;
+        btnCaptureSample.disabled = true;
+        kineticSeries = [];
+
+        for (let step = 1; step <= N; step++) {
+            counterDisplay.innerText = `Shot ${step} / ${N}`;
+            progressFill.style.width = `${((step - 1) / N) * 100}%`;
+            countdownText.innerText = `Capturing point ${step} of ${N}...`;
+
+            const raw = captureRawProfile();
+            if (raw) {
+                const timeVal = (step - 1) * intervalSec;
+                recordDataPoint(step, timeVal, mapToWavelengthGrid(raw));
+            }
+
+            progressFill.style.width = `${(step / N) * 100}%`;
+
+            if (step < N) {
+                for (let c = intervalSec; c > 0; c--) {
+                    countdownText.innerText = `Shot ${step}/${N} saved • Next in ${c}s...`;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+
+        countdownText.innerText = `Completed all ${N} intervals!`;
+        statusText.innerText = "Flask timed sequence complete. Export CSV or Stack Plot PNG below.";
+        btnRunAuto.disabled = false;
+        btnCaptureSample.disabled = false;
+    });
+
+    function recordDataPoint(sampleNum, timeVal, I_grid) {
+        const A_spec = computeAbsorbanceSpectrum(I_grid);
+
+        let maxA = -1, maxNm = 400;
+        for (let i = 0; i < SPECTRUM_BINS; i++) {
+            if (A_spec[i] > maxA) {
+                maxA = A_spec[i];
+                maxNm = 400 + i;
+            }
+        }
+
+        kineticSeries.push({
+            sampleNum: sampleNum,
+            time: timeVal,
+            spectrum: A_spec,
+            lambdaMax: maxNm,
+            aMax: maxA
         });
-    </script>
+
+        renderWaterfallStack();
+        updateKineticsChart();
+    }
+
+    // -------------------------------------------------------------
+    // INTERACTIVE WAVELENGTH & CHARTS
+    // -------------------------------------------------------------
+    window.setWavelength = function(nm) {
+        lambdaSlider.value = nm;
+        lambdaVal.innerText = nm + " nm";
+        renderWaterfallStack();
+        updateKineticsChart();
+    };
+
+    lambdaSlider.addEventListener('input', (e) => {
+        lambdaVal.innerText = e.target.value + " nm";
+        renderWaterfallStack();
+        updateKineticsChart();
+    });
+
+    // Waterfall Stack Plot (Left: First Sample/Time -> Right: Last Sample/Time)
+    function renderWaterfallStack() {
+        const w = stackCanvas.width;
+        const h = stackCanvas.height;
+        const ctxPlot = stackCanvas.getContext('2d');
+
+        ctxPlot.fillStyle = '#080d18';
+        ctxPlot.fillRect(0, 0, w, h);
+
+        const padL = 45, padR = 25, padT = 25, padB = 40;
+        const plotW = w - padL - padR;
+        const plotH = h - padT - padB;
+
+        ctxPlot.strokeStyle = '#22324e';
+        ctxPlot.lineWidth = 1;
+        ctxPlot.strokeRect(padL, padT, plotW, plotH);
+
+        if (kineticSeries.length === 0) {
+            ctxPlot.fillStyle = '#64748b';
+            ctxPlot.font = '12px sans-serif';
+            ctxPlot.textAlign = 'center';
+            ctxPlot.fillText("Record Blank and capture samples to view stack plot.", w / 2, h / 2);
+            return;
+        }
+
+        const n = kineticSeries.length;
+        let maxAbs = 0.4;
+        kineticSeries.forEach(pt => {
+            for (let i = 0; i < SPECTRUM_BINS; i++) {
+                if (pt.spectrum[i] > maxAbs) maxAbs = pt.spectrum[i];
+            }
+        });
+        maxAbs = Math.ceil(maxAbs * 1.15 * 10) / 10;
+
+        const xShiftPerTrace = n > 1 ? (plotW * 0.46) / (n - 1) : 0;
+        const traceW = plotW * 0.54;
+
+        ctxPlot.fillStyle = '#94a3b8';
+        ctxPlot.font = '10px monospace';
+        ctxPlot.textAlign = 'right';
+        ctxPlot.fillText(`${maxAbs.toFixed(1)} AU`, padL - 6, padT + 10);
+        ctxPlot.fillText("0.0", padL - 6, padT + plotH);
+
+        ctxPlot.textAlign = 'center';
+        const axisCaption = (xAxisMode === 'sample')
+            ? "First Sample (#1) ────────▶ Last Sample (#N)"
+            : "Lowest Time (t₀) ────────▶ Highest Time (tₙ)";
+        ctxPlot.fillText(axisCaption, padL + plotW / 2, h - 10);
+
+        kineticSeries.forEach((pt, idx) => {
+            const shiftX = padL + idx * xShiftPerTrace;
+            const hue = 200 + (idx / Math.max(1, n - 1)) * 145;
+            const strokeColor = `hsl(${hue}, 85%, 60%)`;
+            const fillColor = `hsla(${hue}, 85%, 60%, 0.16)`;
+
+            ctxPlot.beginPath();
+            for (let i = 0; i < SPECTRUM_BINS; i++) {
+                const x = shiftX + (i / (SPECTRUM_BINS - 1)) * traceW;
+                const y = (padT + plotH) - (pt.spectrum[i] / maxAbs) * (plotH * 0.85);
+                if (i === 0) ctxPlot.moveTo(x, y);
+                else ctxPlot.lineTo(x, y);
+            }
+
+            ctxPlot.lineTo(shiftX + traceW, padT + plotH);
+            ctxPlot.lineTo(shiftX, padT + plotH);
+            ctxPlot.closePath();
+
+            ctxPlot.fillStyle = fillColor;
+            ctxPlot.fill();
+            ctxPlot.strokeStyle = strokeColor;
+            ctxPlot.lineWidth = 1.8;
+            ctxPlot.stroke();
+
+            ctxPlot.fillStyle = strokeColor;
+            ctxPlot.font = '9px monospace';
+            ctxPlot.textAlign = 'left';
+            const ptLabel = (xAxisMode === 'sample') ? `#${pt.sampleNum}` : `t=${pt.time}s`;
+            ctxPlot.fillText(ptLabel, shiftX + 4, padT + plotH - 6 - Math.min(idx * 4, 40));
+        });
+
+        // Selected wavelength marker
+        const selNm = parseInt(lambdaSlider.value);
+        const binIdx = selNm - 400;
+        const ratio = binIdx / (SPECTRUM_BINS - 1);
+
+        kineticSeries.forEach((pt, idx) => {
+            const shiftX = padL + idx * xShiftPerTrace;
+            const px = shiftX + ratio * traceW;
+            const aVal = pt.spectrum[binIdx] || 0;
+            const py = (padT + plotH) - (aVal / maxAbs) * (plotH * 0.85);
+
+            ctxPlot.beginPath();
+            ctxPlot.arc(px, py, 3.5, 0, 2 * Math.PI);
+            ctxPlot.fillStyle = '#ffffff';
+            ctxPlot.fill();
+        });
+    }
+
+    // Kinetics Variation Chart (Supports Sample # or Time X-axis)
+    function updateKineticsChart() {
+        const selNm = parseInt(lambdaSlider.value);
+        const binIdx = selNm - 400;
+        document.getElementById('kinetics-title').innerText = `Kinetics Variation @ ${selNm} nm`;
+
+        const xLabels = kineticSeries.map(d => (xAxisMode === 'sample') ? `#${d.sampleNum}` : `${d.time}s`);
+        const xTitle = (xAxisMode === 'sample') ? 'Sample Number' : 'Time (s)';
+
+        const absValues = kineticSeries.map(d => parseFloat((d.spectrum[binIdx] || 0).toFixed(4)));
+        
+        // Normalize against initial sample (A / A1) if A1 >= 0.02, else normalize to peak (A / A_max)
+        const aFirst = absValues.length > 0 ? absValues[0] : 0;
+        const aPeak = absValues.length > 0 ? Math.max(...absValues, 1e-4) : 1;
+        const useInitialRef = (aFirst >= 0.02);
+        const refVal = useInitialRef ? aFirst : aPeak;
+        const ratioLabel = useInitialRef ? 'Relative Ratio (A / A₁)' : 'Normalized (A / A_peak)';
+
+        const normValues = absValues.map(a => parseFloat((a / refVal).toFixed(4)));
+
+        const ctxChart = document.getElementById('kineticsChart').getContext('2d');
+        if (kineticsChartInst) kineticsChartInst.destroy();
+
+        kineticsChartInst = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                labels: xLabels,
+                datasets: [
+                    {
+                        label: `Absorbance A(${selNm}nm)`,
+                        data: absValues,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        yAxisID: 'y',
+                        fill: true
+                    },
+                    {
+                        label: ratioLabel,
+                        data: normValues,
+                        borderColor: '#fbbf24',
+                        borderDash: [4, 4],
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        yAxisID: 'y1',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: xTitle, color: '#94a3b8' }, ticks: { color: '#94a3b8' } },
+                    y: { type: 'linear', position: 'left', title: { display: true, text: 'Absorbance (AU)', color: '#38bdf8' }, ticks: { color: '#38bdf8' } },
+                    y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Relative Variation', color: '#fbbf24' }, ticks: { color: '#fbbf24' } }
+                },
+                plugins: { legend: { labels: { color: '#f1f5f9', font: { size: 11 } } } }
+            }
+        });
+    }
+
+    // -------------------------------------------------------------
+    // EXPORTS & RESET
+    // -------------------------------------------------------------
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+        if (kineticSeries.length === 0) { alert("No kinetic data to export."); return; }
+        const selNm = parseInt(lambdaSlider.value);
+        const binIdx = selNm - 400;
+        const aFirst = kineticSeries[0].spectrum[binIdx];
+        const aPeak = Math.max(...kineticSeries.map(d => d.spectrum[binIdx]), 1e-4);
+        const refVal = (aFirst >= 0.02) ? aFirst : aPeak;
+
+        let header = `Sample_Number,Time_s,Absorbance_${selNm}nm,Relative_Variation,Lambda_Max_nm,Absorbance_at_Lambda_Max,`;
+        const nmCols = [];
+        for (let nm = 400; nm <= 700; nm++) nmCols.push(`${nm}nm`);
+        header += nmCols.join(",") + "\n";
+
+        let rows = "";
+        kineticSeries.forEach(pt => {
+            const aSel = pt.spectrum[binIdx] || 0;
+            const ratio = aSel / refVal;
+            rows += `${pt.sampleNum},${pt.time},${aSel.toFixed(4)},${ratio.toFixed(4)},${pt.lambdaMax},${pt.aMax.toFixed(4)},`;
+            rows += Array.from(pt.spectrum).map(v => v.toFixed(4)).join(",") + "\n";
+        });
+
+        const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `kinetics_visible_spectra_${Date.now()}.csv`;
+        link.click();
+    });
+
+    document.getElementById('btn-save-plot').addEventListener('click', () => {
+        if (kineticSeries.length === 0) { alert("No plot data available."); return; }
+        const link = document.createElement("a");
+        link.href = stackCanvas.toDataURL("image/png");
+        link.download = `waterfall_stack_plot_${Date.now()}.png`;
+        link.click();
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        if (!confirm("Clear current kinetic measurements and blank?")) return;
+        kineticSeries = [];
+        I0_raw = null;
+        nextSampleInput.value = 1;
+        btnCaptureSample.innerText = "2. Capture Sample #1";
+        blankBadge.className = "badge badge-default";
+        blankBadge.innerText = "Needs Blank (I₀)";
+        btnBlank.innerText = "1. Record Blank (I₀)";
+        btnRunAuto.disabled = true;
+        btnCaptureSample.disabled = true;
+        updateCounterIdle();
+        progressFill.style.width = "0%";
+        countdownText.innerText = "Record Blank (I₀) to unlock capture";
+        if (kineticsChartInst) { kineticsChartInst.destroy(); kineticsChartInst = null; }
+        renderWaterfallStack();
+        statusText.innerText = "Experiment reset.";
+    });
+</script>
 </body>
 </html>
